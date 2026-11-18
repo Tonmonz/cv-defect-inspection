@@ -1,0 +1,11 @@
+# Python 3.12 or newer (built and tested with Python 3.14). A CPU is enough; no GPU needed.
+# pip install -r requirements.txt   (on Windows, torch from PyPI is the CPU build)
+torch==2.15.0
+torchvision==0.29.2
+numpy==2.5.4
+pillow==12.3.0
+scikit-learn==1.9.1
+matplotlib==3.11.2
+fastapi==0.162.2
+uvicorn==0.54.0
+python-multipart==0.0.33

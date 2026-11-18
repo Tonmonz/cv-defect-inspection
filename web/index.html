@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visual Inspection · Anomaly Detection Demo</title>
+  <meta name="description" content="Find defects on industrial parts by learning only from good parts, with a heatmap of where the defect is.">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230B1220'/%3E%3Cpath d='M7 12V7h5M25 12V7h-5M7 20v5h5M25 20v5h-5' fill='none' stroke='%2322D3EE' stroke-width='2.2' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%23FB7185'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9"/><path d="M7 12V7h5M25 12V7h-5M7 20v5h5M25 20v5h-5"/><circle cx="16" cy="16" r="3.5"/></svg>
+      <div>
+        <p class="brand-title">Visual Inspection</p>
+        <p class="brand-sub">Finds defects by learning only from good parts</p>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" id="tab-inspect" aria-controls="panel-inspect" aria-selected="true">Inspect</button>
+      <button class="tab" role="tab" id="tab-results" aria-controls="panel-results" aria-selected="false" tabindex="-1">Results</button>
+      <button class="tab" role="tab" id="tab-how" aria-controls="panel-how" aria-selected="false" tabindex="-1">How it works</button>
+    </nav>
+    <p class="status" id="status" data-state="loading"><span class="dot" aria-hidden="true"></span><span id="status-text">Loading the models…</span></p>
+  </header>
+
+  <main id="main">
+    <!-- Inspect -->
+    <section class="panel" id="panel-inspect" role="tabpanel" aria-labelledby="tab-inspect">
+      <div class="products" id="products" aria-label="Product"></div>
+
+      <div class="bay">
+        <section class="card stage-card" aria-labelledby="stage-title">
+          <div class="card-head">
+            <h2 id="stage-title">Inspection bay</h2>
+            <p class="muted small" id="stage-sub">Drop or paste an image anywhere on this page</p>
+          </div>
+          <div class="stage" id="stage" data-mode="heat">
+            <span class="corner tl" aria-hidden="true"></span><span class="corner tr" aria-hidden="true"></span>
+            <span class="corner bl" aria-hidden="true"></span><span class="corner br" aria-hidden="true"></span>
+            <img class="layer base" id="base" alt="">
+            <img class="layer heat" id="heat" alt="" aria-hidden="true">
+            <div class="grid-overlay" aria-hidden="true"></div>
+            <div class="scan" aria-hidden="true"></div>
+            <div class="reticle" id="reticle" aria-hidden="true"><i></i><b id="reticle-label"></b></div>
+            <div class="compare-line" id="compare-line" aria-hidden="true"><span></span></div>
+            <label class="sr-only" for="compare">Compare position</label>
+            <input class="compare-range" id="compare" type="range" min="0" max="100" value="50">
+            <div class="empty" id="empty">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="12" r="3"/></svg>
+              <p>Pick a test image below, or drop your own here</p>
+            </div>
+          </div>
+          <div class="stage-tools">
+            <div class="segmented" role="radiogroup" aria-label="View">
+              <label><input type="radio" name="mode" value="heat" checked><span>Heatmap</span></label>
+              <label><input type="radio" name="mode" value="compare"><span>Compare</span></label>
+              <label><input type="radio" name="mode" value="base"><span>Original</span></label>
+            </div>
+            <label class="opacity">Heat <input id="opacity" type="range" min="0" max="100" value="100" aria-label="Heatmap opacity"></label>
+            <label class="btn btn-ghost" for="file">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+              Upload image
+            </label>
+            <input class="sr-only" id="file" type="file" accept="image/*">
+          </div>
+        </section>
+
+        <section class="card verdict-card" aria-labelledby="verdict-title">
+          <h2 class="eyebrow" id="verdict-title">Verdict</h2>
+          <div class="verdict" id="verdict" data-state="idle" aria-live="polite">
+            <svg class="v-icon" viewBox="0 0 24 24" aria-hidden="true"><path id="verdict-icon" d="M5 12h14"/></svg>
+            <p id="verdict-text">Waiting</p>
+          </div>
+          <p class="verdict-sub" id="verdict-sub">Choose a test image to start.</p>
+          <div class="meter" aria-hidden="true">
+            <div class="meter-track"><span class="pass"></span><span class="fail"></span><i class="meter-mark" id="meter-mark"></i><b class="meter-tick"></b></div>
+            <div class="meter-scale"><span>0</span><span>threshold 1.0</span><span>2.0+</span></div>
+          </div>
+          <dl class="facts">
+            <div><dt>Score</dt><dd id="fact-score">-</dd></div>
+            <div><dt>Inference</dt><dd id="fact-ms">-</dd></div>
+            <div><dt>True label</dt><dd id="fact-truth">-</dd></div>
+            <div><dt>Model was</dt><dd id="fact-correct">-</dd></div>
+          </dl>
+          <div class="model-stats" id="model-stats"></div>
+          <p class="note" id="threshold-note"></p>
+        </section>
+      </div>
+
+      <section class="card tray-card" aria-labelledby="tray-title">
+        <div class="card-head">
+          <div>
+            <h2 id="tray-title">Test images the model never saw</h2>
+            <p class="muted small">Two per type. Click one to inspect it.</p>
+          </div>
+          <div class="filters" id="filters" aria-label="Filter by type"></div>
+        </div>
+        <div class="tray" id="tray"></div>
+      </section>
+    </section>
+
+    <!-- Results -->
+    <section class="panel" id="panel-results" role="tabpanel" aria-labelledby="tab-results" hidden>
+      <header class="panel-intro">
+        <h2>Test results</h2>
+        <p class="muted">Images never used for learning or for the threshold. Each product has its own model.</p>
+      </header>
+      <div class="result-cards" id="result-cards"></div>
+      <section class="card" aria-labelledby="auroc-title">
+        <h2 id="auroc-title">AUROC per product</h2>
+        <p class="muted small">Image AUROC: is this part defective? Pixel AUROC: is the heatmap on the defect? Bars run from 0.5 (a coin flip) to 1.0 (perfect).</p>
+        <div class="auroc" id="auroc"></div>
+      </section>
+      <div id="product-reports"></div>
+    </section>
+
+    <!-- How it works -->
+    <section class="panel" id="panel-how" role="tabpanel" aria-labelledby="tab-how" hidden>
+      <header class="panel-intro">
+        <h2>Remember what good looks like, flag what is different</h2>
+        <p class="muted">PatchCore (Roth et al., CVPR 2022), re-implemented in about 140 lines of PyTorch. No defect image is used for learning or for the threshold.</p>
+      </header>
+      <ol class="steps" id="steps"></ol>
+      <section class="card credits" aria-labelledby="credits-title">
+        <h2 id="credits-title">Data and tools</h2>
+        <p>MVTec AD (Bergmann et al., CVPR 2019 / IJCV 2021),
+          <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>, non-commercial use.
+          Backbone: torchvision Wide ResNet-50-2 ImageNet weights.</p>
+        <p class="muted">API: FastAPI (<a href="/api/docs" target="_blank" rel="noopener">interactive API docs</a>). This page: plain HTML, CSS and JavaScript.</p>
+      </section>
+    </section>
+  </main>
+
+  <dialog class="lightbox" id="lightbox" aria-labelledby="lightbox-caption">
+    <form method="dialog"><button class="btn btn-ghost lightbox-close" type="submit">Close</button></form>
+    <img id="lightbox-img" alt="">
+    <p id="lightbox-caption"></p>
+  </dialog>
+  <div class="dropveil" id="dropveil" aria-hidden="true"><p>Drop the image to inspect it</p></div>
+
+  <footer class="footer">Built with PyTorch, FastAPI and plain web code · MVTec AD images (CC BY-NC-SA 4.0)</footer>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

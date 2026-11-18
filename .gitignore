@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+data/
+artifacts/
+# Only the public MVTec AD reports are shareable. Reports from your own (e.g. WD) images stay on this
+# laptop. If you train another MVTec AD category, add a line like !reports/zipper/ below.
+reports/*
+!reports/RESULTS.md
+!reports/summary.png
+!reports/bottle/
+!reports/metal_nut/
+!reports/screw/
