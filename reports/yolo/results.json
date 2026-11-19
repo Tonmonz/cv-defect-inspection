@@ -1,0 +1,45 @@
+{
+  "epochs": 50,
+  "imgsz": 512,
+  "conf": 0.25,
+  "train_minutes": 23.217076281706493,
+  "map50": 0.6191581120529566,
+  "map50_95": 0.3736828548167856,
+  "rows": [
+    {
+      "product": "bottle",
+      "defects": 32,
+      "good": 10,
+      "yolo_caught": 29,
+      "yolo_false_alarms": 0,
+      "patchcore_caught": 32,
+      "patchcore_false_alarms": 0,
+      "yolo_ms": 21.830592853283243
+    },
+    {
+      "product": "metal_nut",
+      "defects": 48,
+      "good": 11,
+      "yolo_caught": 47,
+      "yolo_false_alarms": 0,
+      "patchcore_caught": 48,
+      "patchcore_false_alarms": 1,
+      "yolo_ms": 20.4046135610443
+    },
+    {
+      "product": "screw",
+      "defects": 61,
+      "good": 21,
+      "yolo_caught": 31,
+      "yolo_false_alarms": 1,
+      "patchcore_caught": 33,
+      "patchcore_false_alarms": 0,
+      "yolo_ms": 20.830515854446812
+    }
+  ],
+  "examples": [
+    "bottle / broken_large",
+    "metal_nut / bent",
+    "screw / manipulated_front"
+  ]
+}

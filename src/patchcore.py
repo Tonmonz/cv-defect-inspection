@@ -23,6 +23,8 @@ from torchvision import transforms as T
 from torchvision.models import Wide_ResNet50_2_Weights, wide_resnet50_2
 from torchvision.transforms.functional import gaussian_blur
 
+from .align import align_image, warp
+
 IMAGE_SIZE = 224
 MEAN, STD = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
 
@@ -39,15 +41,25 @@ def load_rgb(source) -> Image.Image:
     return image.convert("RGB")
 
 
-def view(source, crop: bool) -> Image.Image:
+def prepare(source, align: bool = False) -> Image.Image:
+    """Load the image and, for aligned models, turn the part to the standard angle (OpenCV)."""
+    image = load_rgb(source)
+    return align_image(image)[0] if align else image
+
+
+def view(source, crop: bool, align: bool = False) -> Image.Image:
     """The image exactly as the model sees it (for drawing heatmaps on top)."""
-    return T.Compose(geometry(crop))(load_rgb(source))
+    return T.Compose(geometry(crop))(prepare(source, align))
 
 
-def load_mask(path, crop: bool) -> np.ndarray:
+def load_mask(path, crop: bool, matrix=None) -> np.ndarray:
+    """Ground-truth defect mask in model coordinates; `matrix` repeats the image's alignment."""
     nearest = [T.Resize(256, interpolation=T.InterpolationMode.NEAREST), T.CenterCrop(IMAGE_SIZE)] if crop \
         else [T.Resize((IMAGE_SIZE, IMAGE_SIZE), interpolation=T.InterpolationMode.NEAREST)]
-    return np.array(T.Compose(nearest)(Image.open(path).convert("L"))) > 127
+    mask = Image.open(path).convert("L")
+    if matrix is not None:
+        mask = Image.fromarray(warp(np.asarray(mask), matrix, nearest=True))
+    return np.array(T.Compose(nearest)(mask)) > 127
 
 
 class FeatureExtractor(torch.nn.Module):
@@ -89,8 +101,10 @@ def greedy_coreset(features: torch.Tensor, ratio: float, seed: int = 0) -> torch
 
 
 class PatchCore:
-    def __init__(self, extractor: FeatureExtractor, crop: bool = True, coreset_ratio: float = 0.1):
+    def __init__(self, extractor: FeatureExtractor, crop: bool = True, coreset_ratio: float = 0.1,
+                 align: bool = False):
         self.extractor = extractor
+        self.align = align
         self.crop = crop
         self.coreset_ratio = coreset_ratio
         self.transform = T.Compose([*geometry(crop), T.ToTensor(), T.Normalize(MEAN, STD)])
@@ -100,7 +114,7 @@ class PatchCore:
         """Images (paths or PIL) -> patch descriptions, shape (N, 1536, 28, 28)."""
         out = []
         for i in range(0, len(images), batch_size):
-            batch = torch.stack([self.transform(load_rgb(img)) for img in images[i:i + batch_size]])
+            batch = torch.stack([self.transform(prepare(img, self.align)) for img in images[i:i + batch_size]])
             out.append(self.extractor(batch))
         return torch.cat(out)
 
@@ -131,12 +145,12 @@ class PatchCore:
     def save(self, folder: Path, meta: dict):
         folder.mkdir(parents=True, exist_ok=True)
         torch.save(self.bank.half(), folder / "memory_bank.pt")
-        meta = {**meta, "crop": self.crop, "coreset_ratio": self.coreset_ratio}
+        meta = {**meta, "crop": self.crop, "coreset_ratio": self.coreset_ratio, "align": self.align}
         (folder / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     @classmethod
     def load(cls, folder: Path, extractor: FeatureExtractor) -> tuple["PatchCore", dict]:
         meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
-        model = cls(extractor, crop=meta["crop"], coreset_ratio=meta["coreset_ratio"])
+        model = cls(extractor, crop=meta["crop"], coreset_ratio=meta["coreset_ratio"], align=meta.get("align", False))
         model.bank = torch.load(folder / "memory_bank.pt").float()
         return model, meta

@@ -10,3 +10,6 @@ reports/*
 !reports/bottle/
 !reports/metal_nut/
 !reports/screw/
+!reports/yolo/
+# Ultralytics downloads the pretrained YOLO weights here
+yolo11n.pt

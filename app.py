@@ -26,6 +26,7 @@ from PIL import Image, UnidentifiedImageError
 from src.patchcore import FeatureExtractor, PatchCore, load_rgb, view
 from src.paths import ARTIFACTS_DIR, REPORTS_DIR, ROOT
 from src.plots import heat_layer
+from src.regions import defect_regions
 
 WEB_DIR = ROOT / "web"
 SHOW = 448  # size of the pictures sent to the page
@@ -66,9 +67,14 @@ class Inspector:
         result = {
             "product": name, "score": score, "defect": score > 1, "ms": ms,
             "hotspot": {"x": (x + 0.5) / heat.shape[1], "y": (y + 0.5) / heat.shape[0]},
-            "image": data_url(view(image, model.crop).resize((SHOW, SHOW)), "JPEG"),
+            "image": data_url(view(image, model.crop, model.align).resize((SHOW, SHOW)), "JPEG"),
             "heat": data_url(heat_layer(heat, meta["threshold"]).resize((SHOW, SHOW), Image.BILINEAR), "PNG"),
         }
+        # OpenCV boxes around the hot areas, as fractions of the picture
+        size = heat.shape[0]
+        result["regions"] = [{"x": r["x"] / size, "y": r["y"] / size, "w": r["w"] / size, "h": r["h"] / size,
+                              "area": r["area"], "peak": r["peak"]}
+                             for r in defect_regions(heat, meta["threshold"])] if score > 1 else []
         if truth is not None:
             result |= {"truth": truth, "correct": (score > 1) == (truth != "good")}
         return result

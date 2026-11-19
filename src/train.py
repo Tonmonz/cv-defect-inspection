@@ -20,10 +20,13 @@ from sklearn.metrics import roc_auc_score
 
 from . import plots
 from .data import DEFAULT_CATEGORIES, download_mvtec, load_folder
-from .patchcore import IMAGE_SIZE, FeatureExtractor, PatchCore, load_mask, view
+from .align import alignment
+from .patchcore import IMAGE_SIZE, FeatureExtractor, PatchCore, load_mask, load_rgb, view
+from .regions import defect_regions, located
 from .paths import ARTIFACTS_DIR, REPORTS_DIR, ROOT
 
 SEED = 0
+ALIGN = []  # products whose parts are turned to one angle with OpenCV first (see README)
 
 
 def parse_args(argv=None):
@@ -37,6 +40,8 @@ def parse_args(argv=None):
     ap.add_argument("--max-train", type=int, default=400, help="at most this many good images to learn from")
     ap.add_argument("--calibration", type=float, default=0.1,
                     help="share of good training images kept aside to set the threshold")
+    ap.add_argument("--align", nargs="*", default=ALIGN,
+                    help="products to align with OpenCV before the model, e.g. --align screw")
     return ap.parse_args(argv)
 
 
@@ -49,7 +54,7 @@ def stored(path: Path) -> str:
 
 
 def run(name: str, root: Path, source: str, crop: bool, coreset: float, max_train: int,
-        calibration_share: float, extractor: FeatureExtractor) -> dict:
+        calibration_share: float, extractor: FeatureExtractor, align: bool = False) -> dict:
     train, test = load_folder(root)
     shuffled = train[:]
     random.Random(SEED).shuffle(shuffled)
@@ -58,7 +63,7 @@ def run(name: str, root: Path, source: str, crop: bool, coreset: float, max_trai
     print(f"\n=== {name}: learn from {len(learn)} good images, calibrate on {len(calibration)}, "
           f"test on {len(test)} ({sum(s.is_defect for s in test)} defective)")
 
-    model = PatchCore(extractor, crop=crop, coreset_ratio=coreset)
+    model = PatchCore(extractor, crop=crop, coreset_ratio=coreset, align=align)
     started = time.time()
     info = model.fit(learn)
     fit_seconds = time.time() - started
@@ -75,7 +80,13 @@ def run(name: str, root: Path, source: str, crop: bool, coreset: float, max_trai
     is_defect = np.array([s.is_defect for s in test])
     flagged = scores > threshold
 
-    masks = [load_mask(s.mask, crop) if s.mask else None for s in test]
+    masks = [load_mask(s.mask, crop, alignment(load_rgb(s.path)) if align else None) if s.mask else None
+             for s in test]
+    # OpenCV turns each flagged heatmap into boxes; a defect counts as located when the largest
+    # box overlaps the real defect in the ground-truth mask.
+    regions = [defect_regions(m, threshold) for m in maps]
+    caught = [i for i, s in enumerate(test) if s.is_defect and flagged[i] and masks[i] is not None]
+    located_count = sum(located(regions[i], masks[i]) for i in caught)
     pixel_auroc = None
     if any(m is not None for m in masks):
         truth = np.stack([m if m is not None else np.zeros((IMAGE_SIZE, IMAGE_SIZE), bool) for m in masks])
@@ -92,10 +103,13 @@ def run(name: str, root: Path, source: str, crop: bool, coreset: float, max_trai
         "false_alarm_rate": fp / max(fp + tn, 1),
         "true_positives": tp, "false_positives": fp, "false_negatives": fn, "true_negatives": tn,
         "per_kind": per_kind, "ms_per_image": ms_per_image, "fit_seconds": fit_seconds,
+        "located": int(located_count), "located_of": len(caught),
     }
     print(f"    image AUROC {image_auroc:.3f}" + (f", pixel AUROC {pixel_auroc:.3f}" if pixel_auroc else "")
           + f"; caught {tp}/{tp + fn} defects, {fp}/{fp + tn} good parts wrongly flagged; "
           f"{ms_per_image:.0f} ms per image")
+    if caught:
+        print(f"    OpenCV boxes: the largest box is on the real defect in {located_count}/{len(caught)} caught defects")
     for r in per_kind:
         print(f"      {r['kind']:<20} flagged {r['flagged']}/{r['count']}")
 
@@ -108,7 +122,7 @@ def run(name: str, root: Path, source: str, crop: bool, coreset: float, max_trai
         return fig_dir / file
 
     first_of_kind = [next(i for i, s in enumerate(test) if s.kind == k) for k in kinds][:8]
-    plots.examples([{"image": view(test[i].path, crop), "heat": maps[i], "mask": masks[i],
+    plots.examples([{"image": view(test[i].path, crop, align), "heat": maps[i], "mask": masks[i],
                      "kind": test[i].kind, "score": float(scores[i])} for i in first_of_kind],
                    threshold, f"{name}: first test image of each type",
                    add("examples.png", "Heatmaps on test images"))
@@ -197,7 +211,8 @@ def main(argv=None):
     else:
         jobs = [(c, download_mvtec(c), "MVTec AD (CC BY-NC-SA 4.0)") for c in args.categories]
     for name, root, source in jobs:
-        run(name, root, source, not args.no_crop, args.coreset, args.max_train, args.calibration, extractor)
+        run(name, root, source, not args.no_crop, args.coreset, args.max_train, args.calibration, extractor,
+            align=name in args.align)
     write_summary()
     print(f"\nDone. Reports in {REPORTS_DIR}. Start the demo with: python app.py")
 

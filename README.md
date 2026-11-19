@@ -1,9 +1,9 @@
 # Visual Inspection with Anomaly Detection
 
 Find defects on industrial parts by learning **only from good parts**, and show where the defect is with a
-heatmap. A compact PatchCore-style re-implementation in PyTorch (about 140 lines), evaluated on the MVTec AD
-benchmark, with a FastAPI backend and a hand-built web app (scanning animation, heatmap, hotspot reticle,
-before/after compare). Runs on a laptop CPU.
+heatmap and OpenCV boxes. A compact PatchCore-style re-implementation in PyTorch (about 140 lines), evaluated
+on the MVTec AD benchmark and compared with a supervised YOLO11 detector, with a FastAPI backend and a hand-built
+web app (scanning animation, heatmap, defect boxes, hotspot reticle, before/after compare). Runs on a laptop CPU.
 
 ![Demo: a broken bottle is flagged and the heatmap marks the break](docs/demo_bottle.png)
 
@@ -53,6 +53,9 @@ Full numbers and figures per product: [reports/RESULTS.md](reports/RESULTS.md).
 3. **Compare**: every patch of a new image is matched to its nearest remembered good patch. The distances,
    upsampled and smoothed, are the heatmap; its maximum is the image score.
 4. **Decide**: 10% of the good training images are held out; the threshold is the highest score among them.
+5. **Locate (OpenCV)**: the heatmap areas above the threshold are cleaned up (morphological opening), traced with
+   `cv2.findContours` and boxed with `cv2.boundingRect`, so the app can point at each defect. On caught defects,
+   the largest box lands on the real defect in 63/63 bottles, 93/93 metal nuts and 52/62 screws.
 
 ### Design decisions, measured
 
@@ -61,6 +64,31 @@ Full numbers and figures per product: [reports/RESULTS.md](reports/RESULTS.md).
 | Coreset 1% | 10% (bottle, all 209 training images) | pixel AUROC 0.983 vs. 0.984, but 39 s vs. 241 s to build and faster inference |
 | Center crop, as in the benchmark | whole image resized (screw) | image AUROC 0.928 vs. 0.910, pixel AUROC 0.973 vs. 0.966 |
 | Image score = max of the smoothed heatmap | max of the raw patch scores (screw) | image AUROC 0.928 vs. 0.908 |
+| Screws as they lie | turned to one angle first with OpenCV (`--align screw`: Otsu threshold, contour, image moments) | image AUROC 0.928 vs. 0.897, pixel AUROC 0.973 vs. 0.978: alignment sharpened the heatmaps but ranked whole images worse, so it is off by default |
+
+## YOLO vs. PatchCore
+
+PatchCore never sees a defect; a detector like YOLO has to learn from photos of defects with boxes drawn on them.
+To compare them on equal terms, `python -m src.yolo_compare` splits each product's test images in half per defect
+type, draws YOLO boxes around the ground-truth masks with OpenCV, fine-tunes a COCO-pretrained YOLO11n on one half
+(CPU, 50 epochs at 512 px, 23 minutes here) and scores both models on the other half.
+
+| Product | Held-out defects | YOLO caught | PatchCore caught | YOLO false alarms | PatchCore false alarms |
+|---|---|---|---|---|---|
+| bottle | 32 | 29 | 32 | 0/10 | 0/10 |
+| metal nut | 48 | 47 | 48 | 0/11 | 1/11 |
+| screw | 61 | 31 | 33 | 1/21 | 0/21 |
+
+- YOLO learned from 31 (bottle), 45 (metal nut) and 58 (screw) labelled defect images and still caught slightly
+  fewer defects than PatchCore, which learned from good parts only. YOLO's box quality on the held-out half is
+  mAP50 0.619 (mAP50-95 0.374).
+- Screws stay the hard case for both: each catches about half of the held-out screw defects.
+- YOLO fits lines where the defect types are known and labelled in advance; PatchCore fits lines where defects
+  are rare and new kinds keep appearing.
+
+![defects caught](reports/yolo/caught.png)
+
+Details: [reports/yolo/RESULTS.md](reports/yolo/RESULTS.md).
 
 ## Run it
 
@@ -75,6 +103,7 @@ python -m venv .venv
 pip install -r requirements.txt
 python -m src.train                 # downloads MVTec AD bottle, metal_nut, screw and trains one model each
 python app.py                       # http://127.0.0.1:7861
+python -m src.yolo_compare          # optional: the YOLO comparison above (about 25 minutes on a CPU)
 ```
 
 Other MVTec AD categories: `python -m src.train --categories zipper transistor`.
@@ -103,6 +132,9 @@ layout from a folder of good and defect samples.
 ```
 src/data.py        MVTec AD download, folder layout
 src/patchcore.py   feature extractor, coreset, memory bank, heatmaps
+src/regions.py     OpenCV: heatmap -> contours -> defect boxes; mask -> boxes for YOLO labels
+src/align.py       OpenCV: turn a part to one angle (Otsu threshold, contour, image moments)
+src/yolo_compare.py  YOLO11n on half of the test defects vs. PatchCore on the other half
 src/train.py       learn, calibrate the threshold, evaluate, figures, reports
 src/plots.py       heatmap overlay and figures
 src/prepare_wd.py  copy a sample of an image folder into the layout above
@@ -128,3 +160,5 @@ web/               the web page (index.html, styles.css, app.js), no build step
 - Method: Karsten Roth et al., *Towards Total Recall in Industrial Anomaly Detection* (CVPR 2022), re-implemented
   here from the paper's description.
 - Backbone: torchvision's Wide ResNet-50-2 ImageNet weights.
+- Detector: [Ultralytics YOLO11](https://github.com/ultralytics/ultralytics), COCO-pretrained YOLO11n weights,
+  licensed AGPL-3.0. Image processing: [OpenCV](https://opencv.org/), Apache 2.0.

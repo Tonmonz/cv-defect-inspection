@@ -157,6 +157,11 @@ main { padding: var(--s-5) var(--s-6) var(--s-6); max-width: 1500px; margin: 0 a
   border-bottom: 1px solid rgba(165, 243, 252, 0.9); }
 .stage[data-busy="true"] .scan { opacity: 1; animation: sweep 900ms linear infinite; }
 @keyframes sweep { from { transform: translateY(-100%); } to { transform: translateY(460%); } }
+/* OpenCV boxes around the hot areas */
+.boxes { position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: 0; transition: opacity 300ms; }
+.stage[data-ready="true"][data-verdict="defect"]:not([data-mode="base"]) .boxes { opacity: 1; }
+.boxes span { position: absolute; border: 2px solid #fff; border-radius: 4px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0 12px rgba(255, 255, 255, 0.35); }
+.boxes b { position: absolute; left: -2px; bottom: calc(100% + 4px); font: 600 10px/1 ui-monospace, monospace; color: #111; background: #fff; padding: 3px 6px; border-radius: 3px; white-space: nowrap; }
 .reticle { position: absolute; width: 0; height: 0; z-index: 4; pointer-events: none; opacity: 0; transition: opacity 300ms, left var(--t-med) var(--ease), top var(--t-med) var(--ease); }
 .stage[data-ready="true"][data-verdict="defect"]:not([data-mode="base"]) .reticle { opacity: 1; }
 .reticle i { position: absolute; left: -26px; top: -26px; width: 52px; height: 52px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 16px rgba(255, 255, 255, 0.6); }

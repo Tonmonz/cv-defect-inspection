@@ -142,6 +142,7 @@ function setVerdict(kind, text, sub) {
   if (sub != null) $("#verdict-sub").textContent = sub;
 }
 function resetStage() {
+  $("#boxes").replaceChildren();
   const stage = $("#stage");
   stage.dataset.ready = "false";
   stage.dataset.verdict = "";
@@ -198,6 +199,10 @@ function showResult(r) {
   reticle.classList.toggle("flip-y", r.hotspot.y < 0.18);
   if (r.truth != null && r.truth !== "good" && r.defect) state.example[r.product] = r;
   $("#reticle-label").textContent = `hotspot ${num(r.score, 2)}x`;
+  // OpenCV boxes from the server: contours of the areas hotter than the threshold
+  $("#boxes").replaceChildren(...(r.regions || []).map((b, i) => el("span", {
+    style: { left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` },
+  }, el("b", {}, i === 0 ? `defect ${i + 1} \u00b7 ${num(b.peak, 2)}x` : `defect ${i + 1}`))));
   const ratio = num(r.score, 2);
   setVerdict(r.defect ? "defect" : "pass", r.defect ? "DEFECT" : "PASS", r.defect
     ? `The most unusual spot scores ${ratio}x the threshold: nothing the model remembers from good parts looks like it.`
